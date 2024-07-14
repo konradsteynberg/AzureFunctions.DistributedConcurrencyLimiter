@@ -13,6 +13,8 @@ public class QueueTriggerConcurrencyTest
     private readonly ILogger<QueueTriggerConcurrencyTest> _logger;
     private readonly ConcurrencyLimiterService _concurrencyLimiterService;
 
+    private static readonly Random _random = new();
+    
     public QueueTriggerConcurrencyTest(ILogger<QueueTriggerConcurrencyTest> logger, ConcurrencyLimiterService concurrencyLimiterService)
     {
         _logger = logger;
@@ -25,8 +27,7 @@ public class QueueTriggerConcurrencyTest
         ExecutionContext executionContext, CancellationToken cancellationToken)
     {
         await using var _ = await _concurrencyLimiterService.WaitForConcurrentLeaseAsync("concurrency-test", 4, TimeSpan.Zero, executionContext, cancellationToken);
-
-        await Task.Delay(2500, cancellationToken);
+        await Task.Delay(_random.Next(4000, 5000), cancellationToken);
         _logger.LogInformation($"C# Queue trigger function processed: {myQueueItem}");
     }
 }
