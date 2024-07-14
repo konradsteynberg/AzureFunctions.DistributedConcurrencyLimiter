@@ -2,8 +2,13 @@
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
         <AzureFunctionsVersion>v4</AzureFunctionsVersion>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
     <ItemGroup>
+        <PackageReference Include="Azure.Storage.Blobs" Version="12.20.0" />
+        <PackageReference Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0" />
+        <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" Version="5.16.1" />
+        <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.Storage.Queues" Version="5.3.0" />
         <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="4.4.0"/>
     </ItemGroup>
     <ItemGroup>
@@ -14,5 +19,8 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>Never</CopyToPublishDirectory>
         </None>
+    </ItemGroup>
+    <ItemGroup>
+      <Compile Remove="Functions\ServiceBusConcurrencyTest.cs" />
     </ItemGroup>
 </Project>

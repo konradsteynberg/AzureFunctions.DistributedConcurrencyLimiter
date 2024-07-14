@@ -6,15 +6,14 @@ using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Blobs.Specialized;
-using CCBA.Integrations.Base.Abstracts;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ExecutionContext = Microsoft.Azure.WebJobs.ExecutionContext;
 
-namespace CCBA.Testing.ConcurrencyLimiterTest.Services;
+namespace FunctionApp.Services;
 
-public class ConcurrencyLimiterService : BaseLogger
+public class ConcurrencyLimiterService
 {
     private readonly ILogger<ConcurrencyLimiterService> _logger;
     private readonly IConfiguration _configuration;
@@ -23,7 +22,7 @@ public class ConcurrencyLimiterService : BaseLogger
 
     private static readonly object _cacheLock = new();
 
-    public ConcurrencyLimiterService(ILogger<ConcurrencyLimiterService> logger, IConfiguration configuration, IMemoryCache memoryCache) : base(logger, configuration)
+    public ConcurrencyLimiterService(ILogger<ConcurrencyLimiterService> logger, IConfiguration configuration, IMemoryCache memoryCache)
     {
         _logger = logger;
         _configuration = configuration;
@@ -33,25 +32,12 @@ public class ConcurrencyLimiterService : BaseLogger
         _blobContainerClient = blobServiceClient.GetBlobContainerClient("leases");
         _blobContainerClient.CreateIfNotExists();
     }
-
-    /// <summary>
-    /// Waits for a concurrent lease to be acquired.
-    /// </summary>
-    /// <param name="leaseName">The name of the lease.</param>
-    /// <param name="maxConcurrency">The maximum allowed concurrency.</param>
-    /// <param name="timeout">The maximum time to wait for the lease to be acquired.</param>
-    /// <param name="executionContext">The execution context.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task representing the asynchronous operation that returns a <see cref="ConcurrencyLimiterSession"/> object.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="leaseName"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="maxConcurrency"/> is less than or equal to 0.</exception>
-    /// <exception cref="TimeoutException">Thrown when the lease acquisition times out.</exception>
-    /// <exception cref="Exception">Thrown when an unknown error occurs while waiting for the concurrent lease.</exception>
+    
     public async Task<ConcurrencyLimiterSession> WaitForConcurrentLeaseAsync(string leaseName, int maxConcurrency, TimeSpan timeout,
         ExecutionContext? executionContext = null, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(leaseName)) throw new ArgumentNullException(nameof(leaseName));
-        if (maxConcurrency <= 0) throw new ArgumentOutOfRangeException(nameof(maxConcurrency));
+        ArgumentNullException.ThrowIfNull(leaseName, nameof(leaseName));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxConcurrency, nameof(maxConcurrency));
 
         var stopwatch = Stopwatch.StartNew();
 
@@ -95,19 +81,13 @@ public class ConcurrencyLimiterService : BaseLogger
 
                             _memoryCache.Set(key, leaseId, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromSeconds(5) });
 
-                            LogInformation($"Acquired blob lease on blob '{blobClient.Name}'", LogLevel.Trace, properties: new()
-                            {
-                                { "BlobName", blobClient.Name },
-                                { "LeaseId", leaseId },
-                                { "Duration", stopwatch.Elapsed.ToString() },
-                                { nameof(executionContext.InvocationId), executionContext?.InvocationId.ToString() }
-                            });
+                            _logger.LogDebug($"Acquired blob lease on blob '{blobClient.Name}'");
 
                             return new ConcurrencyLimiterSession(_logger, _configuration, blobLeaseClient, blobName, _memoryCache, executionContext, cancellationToken);
                         }
                     }
                 }
-                catch (Azure.RequestFailedException ex) when (ex.Status == 409)
+                catch (RequestFailedException ex) when (ex.Status == 409)
                 {
                     // blob is already leased, need to wait for it to become available
                 }
@@ -134,8 +114,9 @@ public class ConcurrencyLimiterService : BaseLogger
         throw new Exception("Unknown error occurred while waiting for concurrent lease.");
     }
 
-    public class ConcurrencyLimiterSession : BaseLogger, IAsyncDisposable
+    public class ConcurrencyLimiterSession : IAsyncDisposable
     {
+        private readonly ILogger<ConcurrencyLimiterService> _logger;
         private readonly BlobLeaseClient _blobLeaseClient;
         private readonly string _blobName;
         private readonly IMemoryCache _memoryCache;
@@ -144,8 +125,9 @@ public class ConcurrencyLimiterService : BaseLogger
         private readonly Timer? _timerRenewLease = null;
 
         public ConcurrencyLimiterSession(ILogger<ConcurrencyLimiterService> logger, IConfiguration configuration,
-            BlobLeaseClient blobLeaseClient, string blobName, IMemoryCache memoryCache, ExecutionContext? executionContext, CancellationToken cancellationToken) : base(logger, configuration)
+            BlobLeaseClient blobLeaseClient, string blobName, IMemoryCache memoryCache, ExecutionContext? executionContext, CancellationToken cancellationToken)
         {
+            _logger = logger;
             _executionContext = executionContext;
             _blobLeaseClient = blobLeaseClient;
             _blobName = blobName;
@@ -156,19 +138,11 @@ public class ConcurrencyLimiterService : BaseLogger
                 try
                 {
                     Response<BlobLease>? response = blobLeaseClient.Renew(cancellationToken: cancellationToken);
-                    LogInformation($"Lease renewed.", LogLevel.Trace, properties: new()
-                    {
-                        { nameof(response.Value.LeaseId), response.Value.LeaseId },
-                        { nameof(_executionContext.InvocationId), _executionContext?.InvocationId.ToString() }
-                    });
+                    _logger.LogDebug($"Lease renewed. LeaseId={response.Value.LeaseId}");
                 }
                 catch (Exception e)
                 {
-                    LogException($"{e.Message}", e, LogLevel.Warning, properties: new()
-                    {
-                        { nameof(_blobLeaseClient.LeaseId), _blobLeaseClient.LeaseId },
-                        { nameof(_executionContext.InvocationId), _executionContext?.InvocationId.ToString() }
-                    });
+                    _logger.LogError(e, e.Message);
                 }
             }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
         }
@@ -184,19 +158,11 @@ public class ConcurrencyLimiterService : BaseLogger
 
                 _memoryCache.Remove(key);
 
-                LogInformation($"Lease released.", LogLevel.Trace, properties: new()
-                {
-                    { nameof(_blobLeaseClient.LeaseId), _blobLeaseClient.LeaseId },
-                    { nameof(_executionContext.InvocationId), _executionContext?.InvocationId.ToString() }
-                });
+                _logger.LogDebug($"Lease released. LeaseId={_blobLeaseClient.LeaseId}");
             }
             catch (Exception e)
             {
-                LogException(e, LogLevel.Warning, properties: new()
-                {
-                    { nameof(_blobLeaseClient.LeaseId), _blobLeaseClient.LeaseId },
-                    { nameof(_executionContext.InvocationId), _executionContext?.InvocationId.ToString() }
-                });
+                _logger.LogError(e, e.Message);
             }
         }
     }
