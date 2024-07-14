@@ -20,7 +20,4 @@
             <CopyToPublishDirectory>Never</CopyToPublishDirectory>
         </None>
     </ItemGroup>
-    <ItemGroup>
-      <Compile Remove="Functions\ServiceBusConcurrencyTest.cs" />
-    </ItemGroup>
 </Project>
