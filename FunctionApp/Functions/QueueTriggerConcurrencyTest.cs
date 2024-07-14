@@ -3,7 +3,6 @@ using System;
 using System.Threading;
 using FunctionApp.Services;
 using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
 using ExecutionContext = Microsoft.Azure.WebJobs.ExecutionContext;
 
@@ -27,7 +26,7 @@ public class QueueTriggerConcurrencyTest
     {
         await using var _ = await _concurrencyLimiterService.WaitForConcurrentLeaseAsync("concurrency-test", 4, TimeSpan.Zero, executionContext, cancellationToken);
 
-        await Task.Delay(500, cancellationToken);
+        await Task.Delay(2500, cancellationToken);
         _logger.LogInformation($"C# Queue trigger function processed: {myQueueItem}");
     }
 }

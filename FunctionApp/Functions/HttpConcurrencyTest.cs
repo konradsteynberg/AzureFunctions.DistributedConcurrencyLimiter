@@ -1,11 +1,6 @@
-﻿using System;
-using System.Diagnostics;
-using System.Linq;
+﻿using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
-using Azure.Storage.Queues.Models;
-using FunctionApp.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
@@ -33,7 +28,7 @@ public class HttpConcurrencyTest
     {
         req.Query.TryGetValue("count", out var countValues);
         int.TryParse(countValues.FirstOrDefault(), out var count);
-        if (count <= 0) count = 100;
+        if (count <= 0) count = 32;
 
         for (var i = 1; i <= count; i++)
         {
